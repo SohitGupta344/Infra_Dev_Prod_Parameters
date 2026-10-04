@@ -59,11 +59,7 @@ stages:
             displayName: Run TFLint
             inputs:
               targetType: 'inline'
-              script: |
-                Write-Host "Current Directory:"
-                pwd
-                tflint --init
-                tflint --recursive -force
+              script: 'tflint --recursive'
 
   # - stage: TFSEC
   #   displayName: tfsec
