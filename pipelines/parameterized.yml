@@ -47,10 +47,12 @@ parameters:
     default: true
 
 stages:
+  # =======================================================
+  # Stage 1: TFLint (Always starts first)
+  # =======================================================
   - stage: TFLint
     displayName: TFLint
     condition: ${{ parameters.tflint }}
-    dependsOn: []
     jobs:
       - job: TFLint
         displayName: Run TFLint
@@ -58,114 +60,133 @@ stages:
           - task: PowerShell@2
             displayName: Run TFLint
             inputs:
-              targetType: 'inline'
-              script: 'tflint --recursive'
+              targetType: inline
+              script: |
+                Write-Host "Current Directory:"
+                pwd
+                tflint --init
+                tflint --recursive
 
-  # - stage: TFSEC
-  #   displayName: tfsec
-  #   condition: ${{ parameters.tfsec }}
-  #   dependsOn: []
-  #   jobs:
-  #     - job: TFSEC
-  #       displayName: Run tfsec
-  #       steps:
-  #         - task: PowerShell@2
-  #           displayName: Run tfsec
-  #           inputs:
-  #             targetType: inline
-  #             script: |
-  #               tfsec .
+  # =======================================================
+  # Stage 2: tfsec (Starts 2nd, runs even if TFLint is skipped)
+  # =======================================================
+  - stage: TFSEC
+    displayName: tfsec
+    dependsOn: TFLint
+    condition: and(${{ parameters.tfsec }}, in(dependencies.TFLint.result, 'Succeeded', 'Skipped'))
+    jobs:
+      - job: TFSEC
+        displayName: Run tfsec
+        steps:
+          - task: PowerShell@2
+            displayName: Run tfsec
+            inputs:
+              targetType: inline
+              script: |
+                tfsec .
 
-  # - stage: Checkov
-  #   displayName: Checkov
-  #   condition: ${{ parameters.checkov }}
-  #   dependsOn: []
-  #   jobs:
-  #     - job: Checkov
-  #       displayName: Run Checkov
-  #       steps:
-  #         - task: PowerShell@2
-  #           displayName: Run Checkov
-  #           inputs:
-  #             targetType: inline
-  #             script: |
-  #               checkov -d . --framework terraform
+  # =======================================================
+  # Stage 3: Checkov (Starts 3rd, runs even if tfsec is skipped)
+  # =======================================================
+  - stage: Checkov
+    displayName: Checkov
+    dependsOn: TFSEC
+    condition: and(${{ parameters.checkov }}, in(dependencies.TFSEC.result, 'Succeeded', 'Skipped'))
+    jobs:
+      - job: Checkov
+        displayName: Run Checkov
+        steps:
+          - task: PowerShell@2
+            displayName: Run Checkov
+            inputs:
+              targetType: inline
+              script: |
+                checkov -d . --framework terraform
 
-  # - stage: terraform_validate
-  #   displayName: Terraform Validate and Plan (${{ parameters.environment }})
-  #   condition: ${{ parameters.terraform_validate }}
-  #   dependsOn: []
-  #   jobs:
-  #     - job: terraform_init_validate_plan
-  #       displayName: Init Validate and Plan
-  #       steps:
-  #         - task: TerraformTask@5
-  #           displayName: 'Terraform Init (${{ parameters.environment }})'
-  #           inputs:
-  #             provider: 'azurerm'
-  #             command: 'init'
-  #             workingDirectory: '$(System.DefaultWorkingDirectory)/environments/${{ parameters.environment }}'
-  #             backendServiceArm: 'ericsson'
-  #             backendAzureRmResourceGroupName: 'sohit-rg'
-  #             backendAzureRmStorageAccountName: 'sohittfstate001'
-  #             backendAzureRmContainerName: 'tfstate'
-  #             backendAzureRmKey: '${{ parameters.environment }}.terraform.tfstate'
+  # =======================================================
+  # Stage 4: Terraform Init, Validate & Plan (Starts 4th)
+  # =======================================================
+  - stage: terraform_validate
+    displayName: Terraform Validate and Plan (${{ parameters.environment }})
+    dependsOn: Checkov
+    condition: and(${{ parameters.terraform_validate }}, in(dependencies.Checkov.result, 'Succeeded', 'Skipped'))
+    jobs:
+      - job: terraform_init_validate_plan
+        displayName: Init Validate and Plan
+        steps:
+          - task: TerraformTask@5
+            displayName: 'Terraform Init (${{ parameters.environment }})'
+            inputs:
+              provider: 'azurerm'
+              command: 'init'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/environments/${{ parameters.environment }}'
+              backendServiceArm: 'ericsson'
+              backendAzureRmResourceGroupName: 'sohit-rg'
+              backendAzureRmStorageAccountName: 'sohittfstate001'
+              backendAzureRmContainerName: 'tfstate'
+              backendAzureRmKey: '${{ parameters.environment }}.terraform.tfstate'
 
-  #         - task: TerraformTask@5
-  #           displayName: 'Terraform Validate'
-  #           inputs:
-  #             provider: 'azurerm'
-  #             command: 'validate'
-  #             workingDirectory: '$(System.DefaultWorkingDirectory)/environments/${{ parameters.environment }}'
+          - task: TerraformTask@5
+            displayName: 'Terraform Validate'
+            inputs:
+              provider: 'azurerm'
+              command: 'validate'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/environments/${{ parameters.environment }}'
 
-  #         - task: TerraformTask@5
-  #           displayName: 'Terraform Plan (${{ parameters.environment }})'
-  #           inputs:
-  #             provider: 'azurerm'
-  #             command: 'plan'
-  #             workingDirectory: '$(System.DefaultWorkingDirectory)/environments/${{ parameters.environment }}'
-  #             environmentServiceNameAzureRM: 'ericsson'
+          - task: TerraformTask@5
+            displayName: 'Terraform Plan (${{ parameters.environment }})'
+            inputs:
+              provider: 'azurerm'
+              command: 'plan'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/environments/${{ parameters.environment }}'
+              environmentServiceNameAzureRM: 'ericsson'
 
-  # - stage: approval
-  #   displayName: Approval Gate (${{ parameters.environment }})
-  #   condition: and(${{ parameters.approval }}, succeeded('terraform_validate'))
-  #   dependsOn: terraform_validate
-  #   pool: server
-  #   jobs:
-  #     - job: ManualValidation
-  #       displayName: Manual Validation
-  #       steps:
-  #         - task: ManualValidation@1
-  #           displayName: 'Approval for ${{ parameters.environment }} Apply'
-  #           inputs:
-  #             notifyUsers: 'sohitg89@gmail.com'
-  #             approvers: 'sohitg89@gmail.com'
-  #             instructions: 'Please check the Terraform Plan for ${{ parameters.environment }} environment and approve to proceed with deployment.'
+  # =======================================================
+  # Stage 5: Manual Approval Gate
+  # =======================================================
+  - stage: approval
+    displayName: Approval Gate (${{ parameters.environment }})
+    dependsOn: terraform_validate
+    condition: and(${{ parameters.approval }}, succeeded('terraform_validate'))
+    pool: server
+    jobs:
+      - job: ManualValidation
+        displayName: Manual Validation
+        steps:
+          - task: ManualValidation@1
+            displayName: 'Approval for ${{ parameters.environment }} Apply'
+            inputs:
+              notifyUsers: 'sohitg89@gmail.com'
+              approvers: 'sohitg89@gmail.com'
+              instructions: 'Please check the Terraform Plan for ${{ parameters.environment }} environment and approve to proceed with deployment.'
 
-  # - stage: apply
-  #   displayName: Terraform Apply (${{ parameters.environment }})
-  #   condition: and(${{ parameters.apply }}, succeeded())
-  #   dependsOn: approval
-  #   jobs:
-  #     - job: Apply
-  #       displayName: 'Apply (${{ parameters.environment }})'
-  #       steps:
-  #         - task: TerraformTask@5
-  #           displayName: 'Terraform Init (${{ parameters.environment }})'
-  #           inputs:
-  #             provider: 'azurerm'
-  #             command: 'init'
-  #             workingDirectory: '$(System.DefaultWorkingDirectory)/environments/${{ parameters.environment }}'
-  #             backendServiceArm: 'ericsson'
-  #             backendAzureRmResourceGroupName: 'sohit-rg'
-  #             backendAzureRmStorageAccountName: 'sohittfstate001'
-  #             backendAzureRmContainerName: 'tfstate'
-  #             backendAzureRmKey: '${{ parameters.environment }}.terraform.tfstate'
+  # =======================================================
+  # Stage 6: Terraform Apply (ONLY runs on 'main' branch)
+  # =======================================================
+  - stage: apply
+    displayName: Terraform Apply (${{ parameters.environment }})
+    dependsOn: approval
+    condition: and(${{ parameters.apply }}, succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: Apply
+        displayName: 'Apply (${{ parameters.environment }})'
+        steps:
+          - task: TerraformTask@5
+            displayName: 'Terraform Init (${{ parameters.environment }})'
+            inputs:
+              provider: 'azurerm'
+              command: 'init'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/environments/${{ parameters.environment }}'
+              backendServiceArm: 'ericsson'
+              backendAzureRmResourceGroupName: 'sohit-rg'
+              backendAzureRmStorageAccountName: 'sohittfstate001'
+              backendAzureRmContainerName: 'tfstate'
+              backendAzureRmKey: '${{ parameters.environment }}.terraform.tfstate'
 
-  #         - task: TerraformTask@5
-  #           displayName: 'Terraform Apply (${{ parameters.environment }})'
-  #           inputs:
-  #             provider: 'azurerm'
-  #             command: 'apply'
-  #             workingDirectory: '$(System.DefaultWorkingDirectory)/environments/${{ parameters.environment }}'
-  #             environmentServiceNameAzureRM: 'ericsson'
+          - task: TerraformTask@5
+            displayName: 'Terraform Apply (${{ parameters.environment }})'
+            inputs:
+              provider: 'azurerm'
+              command: 'apply'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/environments/${{ parameters.environment }}'
+              environmentServiceNameAzureRM: 'ericsson'
