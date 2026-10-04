@@ -1,28 +1,21 @@
-module "resource_group" {
-  source              = "../../modules/resource_group"
-  resource_group_name = var.resource_group_name
-  location            = var.location
-  tags                = var.tags
-}
-
 resource "azurerm_virtual_network" "vnet" {
   name                = "${var.vm_name}-vnet"
   address_space       = ["10.0.0.0/16"]
   location            = var.location
-  resource_group_name = module.resource_group.resource_group_name
+  resource_group_name = var.resource_group_name
   tags                = var.tags
 }
 
 resource "azurerm_subnet" "subnet" {
   name                 = "${var.vm_name}-subnet"
-  resource_group_name  = module.resource_group.resource_group_name
+  resource_group_name  = var.resource_group_name
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = ["10.0.1.0/24"]
 }
 
 resource "azurerm_public_ip" "pip" {
   name                = "${var.vm_name}-pip"
-  resource_group_name = module.resource_group.resource_group_name
+  resource_group_name = var.resource_group_name
   location            = var.location
   allocation_method   = "Static"
   sku                 = "Standard"
@@ -32,7 +25,7 @@ resource "azurerm_public_ip" "pip" {
 resource "azurerm_network_interface" "nic" {
   name                = "${var.vm_name}-nic"
   location            = var.location
-  resource_group_name = module.resource_group.resource_group_name
+  resource_group_name = var.resource_group_name
   tags                = var.tags
 
   ip_configuration {
@@ -45,11 +38,11 @@ resource "azurerm_network_interface" "nic" {
 
 resource "azurerm_linux_virtual_machine" "vm" {
   name                            = var.vm_name
-  resource_group_name             = module.resource_group.resource_group_name
+  resource_group_name             = var.resource_group_name
   location                        = var.location
   size                            = var.vm_size
-  admin_username                  = "azureuser"
-  admin_password                  = "P@ssw0rd1234!"
+  admin_username                  = var.admin_username
+  admin_password                  = var.admin_password
   disable_password_authentication = false
   network_interface_ids           = [azurerm_network_interface.nic.id]
   tags                            = var.tags

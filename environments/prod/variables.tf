@@ -3,9 +3,15 @@ variable "resource_group_name" {
   description = "The name of the Resource Group in Prod environment."
 }
 
-variable "storage_account_name" {
+variable "vm_name" {
   type        = string
-  description = "The name of the Storage Account in Prod environment."
+  description = "The name of the Virtual Machine in Prod environment."
+}
+
+variable "vm_size" {
+  type        = string
+  description = "VM size for Prod."
+  default     = "Standard_D2s_v3"
 }
 
 variable "location" {

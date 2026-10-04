@@ -31,6 +31,11 @@ parameters:
     type: boolean
     default: true
 
+  - name: infracost
+    displayName: Run Infracost
+    type: boolean
+    default: true
+
   - name: terraform_validate
     displayName: Run terraform validate
     type: boolean
@@ -48,7 +53,7 @@ parameters:
 
 stages:
   # =======================================================
-  # Stage 1: TFLint (Always starts first)
+  # Stage: TFLint (Parallel)
   # =======================================================
   - stage: TFLint
     displayName: TFLint
@@ -63,18 +68,17 @@ stages:
             inputs:
               targetType: inline
               script: |
-                Write-Host "Current Directory:"
-                pwd
+                Write-Host "Running TFLint..."
                 tflint --init
                 tflint --recursive
 
   # =======================================================
-  # Stage 2: tfsec (Starts 2nd, runs even if TFLint is skipped)
+  # Stage: TFSEC (Parallel)
   # =======================================================
   - stage: TFSEC
     displayName: tfsec
+    condition: ${{ parameters.tfsec }}
     dependsOn: []
-    condition: and(${{ parameters.tfsec }}, in(dependencies.TFLint.result, 'Succeeded', 'Skipped'))
     jobs:
       - job: TFSEC
         displayName: Run tfsec
@@ -84,15 +88,16 @@ stages:
             inputs:
               targetType: inline
               script: |
+                Write-Host "Running tfsec..."
                 tfsec .
 
   # =======================================================
-  # Stage 3: Checkov (Starts 3rd, runs even if tfsec is skipped)
+  # Stage: Checkov (Parallel)
   # =======================================================
   - stage: Checkov
     displayName: Checkov
+    condition: ${{ parameters.checkov }}
     dependsOn: []
-    condition: and(${{ parameters.checkov }}, in(dependencies.TFSEC.result, 'Succeeded', 'Skipped'))
     jobs:
       - job: Checkov
         displayName: Run Checkov
@@ -102,15 +107,35 @@ stages:
             inputs:
               targetType: inline
               script: |
+                Write-Host "Running Checkov..."
                 checkov -d . --framework terraform
 
   # =======================================================
-  # Stage 4: Terraform Init, Validate & Plan (Starts 4th)
+  # Stage: Infracost (Parallel)
+  # =======================================================
+  - stage: Infracost
+    displayName: Infracost (${{ parameters.environment }})
+    condition: ${{ parameters.infracost }}
+    dependsOn: []
+    jobs:
+      - job: Infracost
+        displayName: Run Infracost
+        steps:
+          - task: PowerShell@2
+            displayName: Run Infracost
+            inputs:
+              targetType: inline
+              script: |
+                Write-Host "Running Infracost for ${{ parameters.environment }} environment..."
+                infracost breakdown --path "$(System.DefaultWorkingDirectory)/environments/${{ parameters.environment }}"
+
+  # =======================================================
+  # Stage: Terraform Init, Validate & Plan (Parallel)
   # =======================================================
   - stage: terraform_validate
     displayName: Terraform Validate and Plan (${{ parameters.environment }})
+    condition: ${{ parameters.terraform_validate }}
     dependsOn: []
-    condition: and(${{ parameters.terraform_validate }}, in(dependencies.Checkov.result, 'Succeeded', 'Skipped'))
     jobs:
       - job: terraform_init_validate_plan
         displayName: Init Validate and Plan
@@ -144,7 +169,7 @@ stages:
               commandOptions: '-input=false'
 
   # =======================================================
-  # Stage 5: Manual Approval Gate
+  # Stage: Manual Approval Gate
   # =======================================================
   - stage: approval
     displayName: Approval Gate (${{ parameters.environment }})
@@ -163,7 +188,7 @@ stages:
               instructions: 'Please check the Terraform Plan for ${{ parameters.environment }} environment and approve to proceed with deployment.'
 
   # =======================================================
-  # Stage 6: Terraform Apply (ONLY runs on 'main' branch)
+  # Stage: Terraform Apply (ONLY runs on 'main' branch)
   # =======================================================
   - stage: apply
     displayName: Terraform Apply (${{ parameters.environment }})
@@ -192,3 +217,4 @@ stages:
               command: 'apply'
               workingDirectory: '$(System.DefaultWorkingDirectory)/environments/${{ parameters.environment }}'
               environmentServiceNameAzureRM: 'ericsson'
+              commandOptions: '-input=false'

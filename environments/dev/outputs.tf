@@ -8,12 +8,12 @@ output "resource_group_id" {
   value       = module.resource_group.resource_group_id
 }
 
-output "storage_account_name" {
-  description = "The name of the Dev Storage Account."
-  value       = module.storage_account.storage_account_name
+output "vm_name" {
+  description = "The name of the Dev VM."
+  value       = module.virtual_machine.vm_name
 }
 
-output "storage_account_id" {
-  description = "The ID of the Dev Storage Account."
-  value       = module.storage_account.storage_account_id
+output "public_ip_address" {
+  description = "The Public IP of the Dev VM."
+  value       = module.virtual_machine.public_ip_address
 }
