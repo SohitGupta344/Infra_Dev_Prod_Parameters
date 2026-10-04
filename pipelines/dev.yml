@@ -1,0 +1,112 @@
+trigger:
+  branches:
+    include:
+      - feature/*
+      - dev
+
+pool: Default
+
+variables:
+  environment: 'dev'
+
+stages:
+  - stage: TFLint
+    displayName: TFLint
+    jobs:
+      - job: TFLint
+        displayName: Run TFLint
+        steps:
+          - task: PowerShell@2
+            displayName: Run TFLint
+            inputs:
+              targetType: inline
+              script: |
+                tflint --init
+                tflint --recursive
+
+  - stage: TFSEC
+    displayName: tfsec
+    jobs:
+      - job: TFSEC
+        displayName: Run tfsec
+        steps:
+          - task: PowerShell@2
+            displayName: Run tfsec
+            inputs:
+              targetType: inline
+              script: |
+                tfsec .
+
+  - stage: Checkov
+    displayName: Checkov
+    jobs:
+      - job: Checkov
+        displayName: Run Checkov
+        steps:
+          - task: PowerShell@2
+            displayName: Run Checkov
+            inputs:
+              targetType: inline
+              script: |
+                checkov -d . --framework terraform
+
+  - stage: terraform_validate
+    displayName: Terraform Validate and Plan (Dev)
+    jobs:
+      - job: terraform_init_validate_plan
+        displayName: Init Validate and Plan
+        steps:
+          - task: TerraformTask@5
+            displayName: 'Terraform Init (Dev)'
+            inputs:
+              provider: 'azurerm'
+              command: 'init'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/environments/dev'
+              backendServiceArm: 'ericsson'
+              backendAzureRmResourceGroupName: 'sohit-rg'
+              backendAzureRmStorageAccountName: 'sohittfstate001'
+              backendAzureRmContainerName: 'tfstate'
+              backendAzureRmKey: 'dev.terraform.tfstate'
+
+          - task: TerraformTask@5
+            displayName: 'Terraform Validate'
+            inputs:
+              provider: 'azurerm'
+              command: 'validate'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/environments/dev'
+
+          - task: TerraformTask@5
+            displayName: 'Terraform Plan (Dev)'
+            inputs:
+              provider: 'azurerm'
+              command: 'plan'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/environments/dev'
+              environmentServiceNameAzureRM: 'ericsson'
+
+  - stage: apply
+    displayName: Terraform Apply (Dev)
+    dependsOn: terraform_validate
+    condition: succeeded()
+    jobs:
+      - job: Apply
+        displayName: 'Apply (Dev)'
+        steps:
+          - task: TerraformTask@5
+            displayName: 'Terraform Init (Dev)'
+            inputs:
+              provider: 'azurerm'
+              command: 'init'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/environments/dev'
+              backendServiceArm: 'ericsson'
+              backendAzureRmResourceGroupName: 'sohit-rg'
+              backendAzureRmStorageAccountName: 'sohittfstate001'
+              backendAzureRmContainerName: 'tfstate'
+              backendAzureRmKey: 'dev.terraform.tfstate'
+
+          - task: TerraformTask@5
+            displayName: 'Terraform Apply (Dev)'
+            inputs:
+              provider: 'azurerm'
+              command: 'apply'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/environments/dev'
+              environmentServiceNameAzureRM: 'ericsson'
