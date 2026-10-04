@@ -53,6 +53,7 @@ stages:
   - stage: TFLint
     displayName: TFLint
     condition: ${{ parameters.tflint }}
+    dependsOn: []
     jobs:
       - job: TFLint
         displayName: Run TFLint
@@ -72,7 +73,7 @@ stages:
   # =======================================================
   - stage: TFSEC
     displayName: tfsec
-    dependsOn: TFLint
+    dependsOn: []
     condition: and(${{ parameters.tfsec }}, in(dependencies.TFLint.result, 'Succeeded', 'Skipped'))
     jobs:
       - job: TFSEC
@@ -90,7 +91,7 @@ stages:
   # =======================================================
   - stage: Checkov
     displayName: Checkov
-    dependsOn: TFSEC
+    dependsOn: []
     condition: and(${{ parameters.checkov }}, in(dependencies.TFSEC.result, 'Succeeded', 'Skipped'))
     jobs:
       - job: Checkov
@@ -108,7 +109,7 @@ stages:
   # =======================================================
   - stage: terraform_validate
     displayName: Terraform Validate and Plan (${{ parameters.environment }})
-    dependsOn: Checkov
+    dependsOn: []
     condition: and(${{ parameters.terraform_validate }}, in(dependencies.Checkov.result, 'Succeeded', 'Skipped'))
     jobs:
       - job: terraform_init_validate_plan
