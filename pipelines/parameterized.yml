@@ -140,6 +140,7 @@ stages:
               command: 'plan'
               workingDirectory: '$(System.DefaultWorkingDirectory)/environments/${{ parameters.environment }}'
               environmentServiceNameAzureRM: 'ericsson'
+              commandOptions: '-input=false'
 
   # =======================================================
   # Stage 5: Manual Approval Gate
